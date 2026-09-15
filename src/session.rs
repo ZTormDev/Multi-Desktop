@@ -1,4 +1,5 @@
 use crate::config::{Config, valid_identifier};
+use crate::pairing::{DeviceCredentials, Pairing, PairingStore};
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -7,6 +8,12 @@ use std::{
 
 pub struct SessionManager {
     config: Config,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Principal {
+    Admin,
+    Desktop(String),
 }
 
 pub struct DoctorReport {
@@ -24,8 +31,29 @@ impl SessionManager {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
-    pub fn token(&self) -> &str {
-        &self.config.token
+    pub fn authenticate(&self, token: &str) -> io::Result<Option<Principal>> {
+        if token == self.config.token {
+            return Ok(Some(Principal::Admin));
+        }
+        Ok(PairingStore::host_default()
+            .desktop_for_token(token)?
+            .map(Principal::Desktop))
+    }
+
+    pub fn create_pairing(&self, id: &str) -> io::Result<Pairing> {
+        self.validate_id(id)?;
+        PairingStore::host_default().create(id)
+    }
+
+    pub fn redeem_pairing(&self, code: &str) -> io::Result<DeviceCredentials> {
+        let credentials = PairingStore::host_default().redeem(code)?;
+        self.provision(&credentials.desktop_id)?;
+        Ok(credentials)
+    }
+
+    pub fn can_manage(&self, principal: &Principal, id: &str) -> bool {
+        matches!(principal, Principal::Admin)
+            || matches!(principal, Principal::Desktop(owned) if owned == id)
     }
 
     /// Checks prerequisites without creating users, sessions or persistent data.

@@ -1,4 +1,5 @@
 mod config;
+mod pairing;
 mod protocol;
 mod session;
 
@@ -12,14 +13,18 @@ const DEFAULT_CONFIG: &str = "/etc/multi-desktop/multi-desktop.conf";
 
 fn usage() {
     eprintln!(
-        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n  multidesktopd doctor [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
+        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n  multidesktopd doctor [config-path]\n  multidesktopd pair <desktop-id> [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
     );
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("serve");
-    let config_path = args.get(2).map(String::as_str).unwrap_or(DEFAULT_CONFIG);
+    let config_path = if command == "pair" {
+        args.get(3).map(String::as_str).unwrap_or(DEFAULT_CONFIG)
+    } else {
+        args.get(2).map(String::as_str).unwrap_or(DEFAULT_CONFIG)
+    };
 
     if command == "--help" || command == "help" {
         usage();
@@ -58,6 +63,25 @@ fn main() -> ExitCode {
         } else {
             ExitCode::from(4)
         };
+    }
+    if command == "pair" {
+        let Some(id) = args.get(2) else {
+            usage();
+            return ExitCode::from(2);
+        };
+        match SessionManager::new(config).create_pairing(id) {
+            Ok(pairing) => {
+                println!(
+                    "desktop={}; code={}; expires_in_seconds={}",
+                    pairing.desktop_id, pairing.code, pairing.expires_in_seconds
+                );
+                return ExitCode::SUCCESS;
+            }
+            Err(error) => {
+                eprintln!("could not create pairing: {error}");
+                return ExitCode::from(4);
+            }
+        }
     }
     if command != "serve" {
         usage();

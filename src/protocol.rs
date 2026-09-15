@@ -1,4 +1,4 @@
-use crate::session::SessionManager;
+use crate::session::{Principal, SessionManager};
 use multi_desktop::control::{self, AUTH_PROMPT, BANNER};
 use std::{
     io::{self, BufReader, Write},
@@ -17,11 +17,36 @@ pub fn handle_client(mut stream: TcpStream, manager: Arc<SessionManager>) -> io:
         .unwrap_or_else(|_| "unknown".to_owned());
     let mut line = String::new();
     control::read_line(&mut reader, &mut line)?;
-    if line.trim().strip_prefix("AUTH ").unwrap_or("") != manager.token() {
+    let principal = if let Some(token) = line.trim().strip_prefix("AUTH ") {
+        manager.authenticate(token)?
+    } else if let Some(code) = line.trim().strip_prefix("PAIR ") {
+        match manager.redeem_pairing(code) {
+            Ok(credentials) => {
+                eprintln!(
+                    "audit event=pairing-redeemed peer={peer} desktop={}",
+                    credentials.desktop_id
+                );
+                writeln!(
+                    stream,
+                    "OK paired desktop={} token={}",
+                    credentials.desktop_id, credentials.token
+                )?;
+                return Ok(());
+            }
+            Err(error) => {
+                eprintln!("audit event=pairing-failed peer={peer} detail={error}");
+                stream.write_all(b"ERR pairing-failed\n")?;
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+    let Some(principal) = principal else {
         eprintln!("audit event=authentication-failed peer={peer}");
         stream.write_all(b"ERR unauthorized\n")?;
         return Ok(());
-    }
+    };
     stream.write_all(b"OK authenticated\n")?;
     loop {
         line.clear();
@@ -35,11 +60,14 @@ pub fn handle_client(mut stream: TcpStream, manager: Arc<SessionManager>) -> io:
         let response = match (verb, id, command.next()) {
             ("INFO", None, None) => Ok("version=1;features=desktop-lifecycle".to_owned()),
             ("PING", None, None) => Ok("PONG".to_owned()),
-            ("LIST", None, None) => manager.list(),
-            ("PROVISION", Some(id), None) => manager.provision(id),
-            ("STATUS", Some(id), None) => manager.status(id),
-            ("START", Some(id), None) => manager.start(id),
-            ("STOP", Some(id), None) => manager.stop(id),
+            ("LIST", None, None) if principal == Principal::Admin => manager.list(),
+            ("PROVISION", Some(id), None) if principal == Principal::Admin => manager.provision(id),
+            ("STATUS", Some(id), None) if manager.can_manage(&principal, id) => manager.status(id),
+            ("START", Some(id), None) if manager.can_manage(&principal, id) => manager.start(id),
+            ("STOP", Some(id), None) if manager.can_manage(&principal, id) => manager.stop(id),
+            ("LIST" | "PROVISION" | "STATUS" | "START" | "STOP", _, _) => {
+                Ok("ERR forbidden".to_owned())
+            }
             ("QUIT", None, None) => return Ok(()),
             _ => Ok("ERR unknown-command".to_owned()),
         };

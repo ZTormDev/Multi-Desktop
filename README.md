@@ -63,4 +63,20 @@ Passing the token directly as an argument remains supported for simple tests, bu
 
 Lifecycle operations and failed authentication attempts are recorded in the daemon journal. Inspect them with `journalctl -u multidesktopd.service` after the service is enabled.
 
+## Pair a remote device
+
+On the host, create a one-use code for the desktop that belongs to the laptop owner:
+
+```bash
+sudo multidesktopd pair girlfriend
+```
+
+The code expires after five minutes. On the laptop, redeem it once:
+
+```bash
+multidesktopctl pair <host:port> <pairing-code>
+```
+
+That provisions the isolated Linux user and returns a device token. Save the token in the future client; it can only start, stop or view the paired desktop, never list or control anyone else's desktop. The current bootstrap channel is still LAN-development-only until TLS is added.
+
 See [the architecture document](docs/ARCHITECTURE.md) for the boundary model. `scripts/uninstall.sh` removes installed program files but deliberately preserves configuration and all provisioned desktop data.

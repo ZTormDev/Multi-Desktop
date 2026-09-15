@@ -4,7 +4,7 @@ pub mod control {
     use std::io::{self, BufRead, Read};
 
     pub const BANNER: &str = "MULTIDESKTOP/1";
-    pub const AUTH_PROMPT: &str = "AUTH <token>";
+    pub const AUTH_PROMPT: &str = "AUTH <token> OR PAIR <code>";
     pub const MAX_LINE_BYTES: u64 = 4096;
 
     /// Reads exactly one bounded UTF-8 line from the control protocol.
