@@ -48,4 +48,5 @@ pub mod control {
     }
 }
 
+pub mod tls;
 pub mod transport;

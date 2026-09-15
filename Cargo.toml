@@ -22,6 +22,18 @@ name = "multi-desktop-media-agent"
 path = "src/bin/media_agent.rs"
 
 [[bin]]
+name = "multi-desktop-audio-agent"
+path = "src/bin/audio_agent.rs"
+
+[[bin]]
+name = "multi-desktop-input-agent"
+path = "src/bin/input_agent.rs"
+
+[[bin]]
+name = "multi-desktop-session-inner"
+path = "src/bin/session_inner.rs"
+
+[[bin]]
 name = "multidesktopctl"
 path = "src/bin/client.rs"
 
@@ -31,6 +43,8 @@ codegen-units = 1
 strip = true
 
 [dependencies]
+libc = "0.2"
 serde_json = "1.0"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
 rustls-pemfile = "2.2"
+sha2 = "0.10"

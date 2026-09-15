@@ -30,7 +30,12 @@ fn main() -> ExitCode {
         }
         let user = env::var("USER").unwrap_or_else(|_| format!("mdesk-{id}"));
         let capture_wrapped_command = format!(
-            "/usr/local/bin/multi-desktop-capture-agent & /usr/local/bin/multi-desktop-media-agent & exec {command}"
+            "while true; do pipewire; sleep 2; done & \
+             while true; do pipewire-pulse; sleep 2; done & \
+             while true; do /usr/local/bin/multi-desktop-capture-agent; sleep 2; done & \
+             while true; do /usr/local/bin/multi-desktop-media-agent; sleep 2; done & \
+             while true; do /usr/local/bin/multi-desktop-audio-agent; sleep 2; done & \
+             exec {command}"
         );
         let error = Command::new("dbus-run-session")
             .args(["--", "/bin/sh", "-lc", &capture_wrapped_command])
@@ -49,7 +54,10 @@ fn main() -> ExitCode {
             .env("XDG_STATE_HOME", format!("{home}/.local/state"))
             .env("XDG_CACHE_HOME", format!("{home}/.cache"))
             .env("XDG_CURRENT_DESKTOP", "MultiDesktop")
-            .env("MULTIDESKTOP_SESSION", id)
+            .env("MULTIDESKTOP_SESSION", &id)
+            .env("MULTIDESKTOP_DESKTOP_ID", &id)
+            .env("MULTIDESKTOP_DESKTOP_HOME", &home)
+            .env("MULTIDESKTOP_DESKTOP_RUNTIME", &runtime)
             .exec();
         eprintln!("could not execute desktop compositor: {error}");
         ExitCode::from(3)

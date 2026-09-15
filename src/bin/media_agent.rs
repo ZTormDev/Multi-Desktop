@@ -1,33 +1,38 @@
-//! Encodes the private Gamescope PipeWire node as low-latency H.264 shared memory.
+//! Encodes the private Gamescope PipeWire node into a session-local Unix relay.
 use std::{
-    env, fs, io, os::unix::fs::PermissionsExt, path::Path, process::Command, thread, time::Duration,
+    env, fs, io,
+    os::unix::{
+        fs::{FileTypeExt, PermissionsExt},
+        net::UnixListener,
+    },
+    path::Path,
+    process::{Command, Stdio},
+    thread,
+    time::Duration,
 };
 
 fn main() -> io::Result<()> {
     let runtime = env::var("MULTIDESKTOP_DESKTOP_RUNTIME")
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "missing desktop runtime"))?;
-    let desktop_id = env::var("MULTIDESKTOP_SESSION")
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "missing desktop id"))?;
-    let port = media_port(&desktop_id);
     let runtime = Path::new(&runtime);
     let capture = runtime.join("capture-node");
     let status = runtime.join("media-status");
-    let socket = runtime.join("video.h264.shm");
+    let socket = runtime.join("video.h264.sock");
     loop {
         let Some(node) = ready_node(&capture) else {
             write_status(&status, "state=waiting-for-capture\n")?;
             thread::sleep(Duration::from_secs(1));
             continue;
         };
-        let _ = fs::remove_file(&socket);
+        remove_stale_socket(&socket)?;
+        let listener = UnixListener::bind(&socket)?;
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
         write_status(
             &status,
-            &format!(
-                "state=encoding\nnode_id={node}\ncodec=h264\nendpoint={}\nrelay=127.0.0.1:{port}\n",
-                socket.display(),
-            ),
+            &format!("state=encoding\nnode_id={node}\ncodec=h264\nrelay=private-unix\n"),
         )?;
-        let result = Command::new("gst-launch-1.0")
+        let (mut relay, _) = listener.accept()?;
+        let mut encoder = Command::new("gst-launch-1.0")
             .args([
                 "-q",
                 "pipewiresrc",
@@ -48,26 +53,27 @@ fn main() -> io::Result<()> {
                 "h264parse",
                 "config-interval=1",
                 "!",
-                "tee",
-                "name=video",
-                "video.",
+                "video/x-h264,stream-format=byte-stream,alignment=au",
                 "!",
-                "queue",
-                "!",
-                "shmsink",
-                &format!("socket-path={}", socket.display()),
-                "wait-for-connection=false",
-                "sync=false",
-                "video.",
-                "!",
-                "queue",
-                "!",
-                "tcpserversink",
-                "host=127.0.0.1",
-                &format!("port={port}"),
+                "fdsink",
+                "fd=1",
                 "sync=false",
             ])
-            .status()?;
+            .stdout(Stdio::piped())
+            .spawn()?;
+        write_status(
+            &status,
+            &format!("state=streaming\nnode_id={node}\ncodec=h264\nrelay=private-unix\n"),
+        )?;
+        let copy_result = io::copy(
+            encoder
+                .stdout
+                .as_mut()
+                .ok_or_else(|| io::Error::other("encoder stdout is unavailable"))?,
+            &mut relay,
+        );
+        let _ = encoder.kill();
+        let result = encoder.wait()?;
         write_status(
             &status,
             &format!(
@@ -75,6 +81,15 @@ fn main() -> io::Result<()> {
                 result.code().unwrap_or(-1)
             ),
         )?;
+        if let Err(error) = copy_result {
+            write_status(
+                &status,
+                &format!(
+                    "state=relay-ended\nreason={}\n",
+                    sanitize(&error.to_string())
+                ),
+            )?;
+        }
         thread::sleep(Duration::from_secs(2));
     }
 }
@@ -97,21 +112,48 @@ fn write_status(path: &Path, contents: &str) -> io::Result<()> {
     fs::rename(temporary, path)
 }
 
-fn media_port(desktop_id: &str) -> u16 {
-    let hash = desktop_id.bytes().fold(2_166_136_261_u32, |state, byte| {
-        (state ^ u32::from(byte)).wrapping_mul(16_777_619)
-    });
-    49_000 + (hash % 1_000) as u16
+fn remove_stale_socket(path: &Path) -> io::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_socket() => fs::remove_file(path),
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "video relay path exists and is not a socket",
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn sanitize(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| *character != '\n' && *character != '\r')
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::media_port;
+    use super::remove_stale_socket;
+    use std::{fs, os::unix::net::UnixListener};
 
     #[test]
-    fn assigns_a_stable_loopback_relay_port() {
-        let port = media_port("laptop");
-        assert!((49_000..50_000).contains(&port));
-        assert_eq!(port, media_port("laptop"));
+    fn removes_only_a_stale_unix_socket() {
+        let root = std::env::temp_dir().join(format!(
+            "multi-desktop-media-socket-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let socket = root.join("relay.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        drop(listener);
+        remove_stale_socket(&socket).unwrap();
+        assert!(!socket.exists());
+        fs::write(&socket, "do-not-remove").unwrap();
+        assert!(remove_stale_socket(&socket).is_err());
+        assert!(socket.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }

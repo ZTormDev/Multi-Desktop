@@ -23,7 +23,8 @@ This project owns the host, protocol and client. Do not substitute Moonlight, Su
 | --- | --- | --- |
 | Shared protocol primitives | `src/lib.rs`, `src/transport.rs` | Must compile for Windows. |
 | Linux control plane | `src/main.rs`, `src/protocol.rs` | Root-only and narrow. |
-| Session lifecycle | `src/session.rs`, `src/bin/desktop_session.rs` | Owns users, systemd units and environment isolation. |
+| Session lifecycle | `src/session.rs`, `src/bin/desktop_session.rs`, `src/bin/session_inner.rs` | Owns users, systemd units and the private Gamescope child environment. |
+| Capture, media and input agents | `src/bin/capture_agent.rs`, `src/bin/media_agent.rs`, `src/bin/audio_agent.rs`, `src/bin/input_agent.rs` | Must use only a provisioned desktop's runtime and compositor interfaces. |
 | Device pairing | `src/pairing.rs` | Owns one-time code and device-token persistence. |
 | Reference CLI | `src/bin/client.rs` | Keep cross-platform. |
 | Packaging | `scripts/`, `packaging/`, `config/` | Installers must preserve user data by default. |
@@ -49,6 +50,7 @@ This project owns the host, protocol and client. Do not substitute Moonlight, Su
 - Never enable a network service, alter firewall rules, create/remove a desktop user, or stop a running desktop without explicit user authorization.
 - `scripts/uninstall.sh` must preserve `/etc/multi-desktop` and `/var/lib/multi-desktop` unless the user explicitly asks for data removal.
 - Keep the default compositor backend configurable. Do not hard-code a personal username, host name, GPU model or desktop name.
+- `multi-desktop-input-agent` may use only the private `LIBEI_SOCKET` inherited inside Gamescope. Do not add `/dev/uinput`, `ydotool`, or access to the physical Wayland seat.
 
 ## Completion standard
 

@@ -2,12 +2,13 @@ mod config;
 mod pairing;
 mod protocol;
 mod session;
-mod tls;
 
 use std::{env, net::TcpListener, path::Path, process::ExitCode, sync::Arc, thread};
 
 use config::Config;
-use protocol::handle_client;
+use multi_desktop::tls;
+use protocol::{AuthRateLimiter, handle_client};
+use rustls::{ServerConnection, StreamOwned};
 use session::SessionManager;
 
 const DEFAULT_CONFIG: &str = "/etc/multi-desktop/multi-desktop.conf";
@@ -106,6 +107,18 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
+    let tls_server = match (&config.tls_certificate, &config.tls_private_key) {
+        (Some(certificate), Some(key)) => match tls::load_server_config(certificate, key) {
+            Ok(server) => Some(server),
+            Err(error) => {
+                eprintln!("TLS configuration error: {error}");
+                return ExitCode::from(2);
+            }
+        },
+        (None, None) => None,
+        _ => unreachable!("Config validates TLS paths as a pair"),
+    };
+
     let listener = match TcpListener::bind(&config.listen) {
         Ok(listener) => listener,
         Err(error) => {
@@ -115,14 +128,45 @@ fn main() -> ExitCode {
     };
 
     let manager = Arc::new(SessionManager::new(config.clone()));
-    eprintln!("multi-desktop control plane listening on {}", config.listen);
+    let limiter = Arc::new(AuthRateLimiter::new());
+    eprintln!(
+        "multi-desktop control plane listening on {} ({})",
+        config.listen,
+        if tls_server.is_some() {
+            "TLS"
+        } else {
+            "loopback plaintext"
+        }
+    );
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let manager = Arc::clone(&manager);
+                let limiter = Arc::clone(&limiter);
+                let tls_server = tls_server.clone();
                 thread::spawn(move || {
-                    if let Err(error) = handle_client(stream, manager) {
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(15)));
+                    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(15)));
+                    let peer = stream
+                        .peer_addr()
+                        .map(|address| address.ip().to_string())
+                        .unwrap_or_else(|_| "unknown".to_owned());
+                    let result = if let Some(server) = tls_server {
+                        ServerConnection::new(server)
+                            .map_err(std::io::Error::other)
+                            .and_then(|connection| {
+                                handle_client(
+                                    StreamOwned::new(connection, stream),
+                                    manager,
+                                    peer,
+                                    limiter,
+                                )
+                            })
+                    } else {
+                        handle_client(stream, manager, peer, limiter)
+                    };
+                    if let Err(error) = result {
                         eprintln!("client session ended: {error}");
                     }
                 });

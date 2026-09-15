@@ -1,6 +1,6 @@
 //! TLS material loading shared by the future authenticated control and media relays.
 use rustls::{
-    ServerConfig,
+    ClientConfig, RootCertStore, ServerConfig,
     pki_types::{CertificateDer, PrivateKeyDer},
 };
 use std::{
@@ -37,4 +37,31 @@ pub fn load_server_config(
         .with_single_cert(certificates, key)
         .map(Arc::new)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+/// Builds a client configuration that trusts only certificates in `ca_path`.
+pub fn load_client_config(ca_path: &Path) -> io::Result<Arc<ClientConfig>> {
+    let certificates: Vec<CertificateDer<'static>> =
+        rustls_pemfile::certs(&mut BufReader::new(File::open(ca_path)?))
+            .collect::<Result<_, _>>()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    if certificates.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "TLS CA certificate file is empty",
+        ));
+    }
+    let mut roots = RootCertStore::empty();
+    let (added, ignored) = roots.add_parsable_certificates(certificates);
+    if added == 0 || ignored > 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "TLS CA file contains an invalid certificate",
+        ));
+    }
+    Ok(Arc::new(
+        ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth(),
+    ))
 }
