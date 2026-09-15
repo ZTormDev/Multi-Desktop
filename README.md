@@ -31,8 +31,11 @@ Set a random token in that file, validate it, then explicitly enable the service
 
 ```bash
 sudo multidesktopd check /etc/multi-desktop/multi-desktop.conf
+sudo multidesktopd doctor /etc/multi-desktop/multi-desktop.conf
 sudo systemctl enable --now multidesktopd.service
 ```
+
+`doctor` is read-only: it verifies the session launcher, systemd, DBus, user provisioning and the programs referenced by the default desktop command. Resolve every `FAIL` before enabling the service.
 
 To permit a remote device, bind `listen` to the host's fixed LAN IP and add a firewall rule restricted to trusted devices. Do not expose the current development protocol to the Internet.
 

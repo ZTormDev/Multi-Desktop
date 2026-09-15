@@ -1,6 +1,6 @@
 use crate::config::{Config, valid_identifier};
 use std::{
-    fs, io,
+    env, fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -9,12 +9,50 @@ pub struct SessionManager {
     config: Config,
 }
 
+pub struct DoctorReport {
+    pub ok: bool,
+    pub items: Vec<DoctorItem>,
+}
+
+pub struct DoctorItem {
+    pub name: &'static str,
+    pub detail: String,
+    pub ok: bool,
+}
+
 impl SessionManager {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
     pub fn token(&self) -> &str {
         &self.config.token
+    }
+
+    /// Checks prerequisites without creating users, sessions or persistent data.
+    pub fn doctor(&self) -> DoctorReport {
+        let mut items = vec![
+            prerequisite("systemd-run", "required to isolate desktop units"),
+            prerequisite("useradd", "required to provision desktop users"),
+            prerequisite("dbus-run-session", "required for a private desktop bus"),
+            executable(
+                Path::new("/usr/local/bin/multi-desktop-session"),
+                "isolated desktop session launcher",
+            ),
+        ];
+        for program in ["gamescope", "startxfce4"] {
+            if self
+                .config
+                .desktop_command
+                .split_whitespace()
+                .any(|word| word == program)
+            {
+                items.push(prerequisite(program, "referenced by desktop_command"));
+            }
+        }
+        DoctorReport {
+            ok: items.iter().all(|item| item.ok),
+            items,
+        }
     }
 
     pub fn list(&self) -> io::Result<String> {
@@ -166,5 +204,43 @@ impl SessionManager {
         } else {
             Err(io::Error::other("could not set desktop ownership"))
         }
+    }
+}
+
+fn prerequisite(program: &'static str, detail: &'static str) -> DoctorItem {
+    let found = env::var_os("PATH").is_some_and(|paths| {
+        env::split_paths(&paths).any(|directory| executable(&directory.join(program), detail).ok)
+    });
+    DoctorItem {
+        name: program,
+        detail: if found {
+            detail.to_owned()
+        } else {
+            format!("not found in PATH; {detail}")
+        },
+        ok: found,
+    }
+}
+
+fn executable(path: &Path, detail: &'static str) -> DoctorItem {
+    let ok = path.is_file()
+        && fs::metadata(path)
+            .map(|metadata| {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode() & 0o111 != 0
+            })
+            .unwrap_or(false);
+    DoctorItem {
+        name: if path == Path::new("/usr/local/bin/multi-desktop-session") {
+            "multi-desktop-session"
+        } else {
+            "desktop-command"
+        },
+        detail: if ok {
+            detail.to_owned()
+        } else {
+            format!("missing or not executable: {}; {detail}", path.display())
+        },
+        ok,
     }
 }

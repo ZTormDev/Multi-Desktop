@@ -12,7 +12,7 @@ const DEFAULT_CONFIG: &str = "/etc/multi-desktop/multi-desktop.conf";
 
 fn usage() {
     eprintln!(
-        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
+        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n  multidesktopd doctor [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
     );
 }
 
@@ -42,6 +42,22 @@ fn main() -> ExitCode {
     if command == "check" {
         println!("configuration is valid");
         return ExitCode::SUCCESS;
+    }
+    if command == "doctor" {
+        let report = SessionManager::new(config).doctor();
+        for item in &report.items {
+            println!(
+                "{} {}: {}",
+                if item.ok { "OK" } else { "FAIL" },
+                item.name,
+                item.detail
+            );
+        }
+        return if report.ok {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(4)
+        };
     }
     if command != "serve" {
         usage();
