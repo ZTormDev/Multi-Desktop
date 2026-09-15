@@ -63,9 +63,12 @@ pub fn handle_client(mut stream: TcpStream, manager: Arc<SessionManager>) -> io:
             ("LIST", None, None) if principal == Principal::Admin => manager.list(),
             ("PROVISION", Some(id), None) if principal == Principal::Admin => manager.provision(id),
             ("STATUS", Some(id), None) if manager.can_manage(&principal, id) => manager.status(id),
+            ("DETAILS", Some(id), None) if manager.can_manage(&principal, id) => {
+                manager.details(id)
+            }
             ("START", Some(id), None) if manager.can_manage(&principal, id) => manager.start(id),
             ("STOP", Some(id), None) if manager.can_manage(&principal, id) => manager.stop(id),
-            ("LIST" | "PROVISION" | "STATUS" | "START" | "STOP", _, _) => {
+            ("LIST" | "PROVISION" | "STATUS" | "DETAILS" | "START" | "STOP", _, _) => {
                 Ok("ERR forbidden".to_owned())
             }
             ("QUIT", None, None) => return Ok(()),

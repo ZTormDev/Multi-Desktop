@@ -139,6 +139,25 @@ impl SessionManager {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
     }
 
+    /// Returns stable, one-line systemd diagnostics suitable for a remote client.
+    pub fn details(&self, id: &str) -> io::Result<String> {
+        self.validate_id(id)?;
+        let output = Command::new("systemctl")
+            .args([
+                "show",
+                "--no-page",
+                "--property=ActiveState,SubState,Result,ExecMainStatus",
+                &self.unit_name(id),
+            ])
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other("could not inspect desktop session"));
+        }
+        Ok(format_systemd_details(&String::from_utf8_lossy(
+            &output.stdout,
+        )))
+    }
+
     pub fn start(&self, id: &str) -> io::Result<String> {
         self.provision(id)?;
         if matches!(self.status(id).as_deref(), Ok("active")) {
@@ -188,7 +207,11 @@ impl SessionManager {
             .args(["stop", &self.unit_name(id)])
             .status()?;
         if status.success() {
-            Ok("stopped".into())
+            let runtime = self.runtime_path(id);
+            if runtime.exists() {
+                fs::remove_dir_all(runtime)?;
+            }
+            Ok("stopped;runtime-cleaned".into())
         } else {
             Err(io::Error::other("could not stop desktop session"))
         }
@@ -235,6 +258,25 @@ impl SessionManager {
     }
 }
 
+fn format_systemd_details(output: &str) -> String {
+    let details: Vec<_> = output
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .filter(|(key, _)| {
+            matches!(
+                *key,
+                "ActiveState" | "SubState" | "Result" | "ExecMainStatus"
+            )
+        })
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect();
+    if details.is_empty() {
+        "state=unknown".to_owned()
+    } else {
+        details.join(";")
+    }
+}
+
 fn prerequisite(program: &'static str, detail: &'static str) -> DoctorItem {
     let found = env::var_os("PATH").is_some_and(|paths| {
         env::split_paths(&paths).any(|directory| executable(&directory.join(program), detail).ok)
@@ -270,5 +312,21 @@ fn executable(path: &Path, detail: &'static str) -> DoctorItem {
             format!("missing or not executable: {}; {detail}", path.display())
         },
         ok,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_systemd_details;
+
+    #[test]
+    fn formats_only_stable_systemd_fields() {
+        let details = format_systemd_details(
+            "ActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=127\nDescription=ignore\n",
+        );
+        assert_eq!(
+            details,
+            "ActiveState=failed;SubState=failed;Result=exit-code;ExecMainStatus=127"
+        );
     }
 }

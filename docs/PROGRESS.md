@@ -46,7 +46,7 @@ This document intentionally separates implemented code from the actual user outc
 
 Goal: reliably start and recover a second virtual desktop while the physical desktop remains unaffected.
 
-- [ ] Add structured session state and failure reason reporting.
+- [x] Add structured session state and failure reason reporting (`DETAILS <desktop-id>`).
 - [ ] Add crash/restart policy and cleanup of stale runtime directories.
 - [ ] Add integration tests that provision, start, stop and restart a disposable desktop.
 - [ ] Verify that local Hyprland input, sockets and HOME are inaccessible from the remote session.

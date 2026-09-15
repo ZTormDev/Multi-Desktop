@@ -51,6 +51,7 @@ PROVISION <desktop-id>
 STATUS <desktop-id>
 START <desktop-id>
 STOP <desktop-id>
+DETAILS <desktop-id>
 ```
 
 The development CLI is:
@@ -62,6 +63,8 @@ printf '%s' '<token>' | multidesktopctl <host:port> --token-stdin START <desktop
 Passing the token directly as an argument remains supported for simple tests, but standard input avoids exposing it in the local process list.
 
 Lifecycle operations and failed authentication attempts are recorded in the daemon journal. Inspect them with `journalctl -u multidesktopd.service` after the service is enabled.
+
+`DETAILS <desktop-id>` returns the session's active state, sub-state, result and main-process exit status in one line. `STOP` removes only that desktop's temporary runtime directory; its provisioned HOME is kept.
 
 ## Pair a remote device
 
