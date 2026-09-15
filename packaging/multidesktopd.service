@@ -1,0 +1,13 @@
+[Unit]
+Description=Multi-Desktop isolated session controller
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/multidesktopd serve /etc/multi-desktop/multi-desktop.conf
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

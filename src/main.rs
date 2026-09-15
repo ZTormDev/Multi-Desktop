@@ -1,0 +1,85 @@
+mod config;
+mod protocol;
+mod session;
+
+use std::{env, net::TcpListener, path::Path, process::ExitCode, sync::Arc, thread};
+
+use config::Config;
+use protocol::handle_client;
+use session::SessionManager;
+
+const DEFAULT_CONFIG: &str = "/etc/multi-desktop/multi-desktop.conf";
+
+fn usage() {
+    eprintln!(
+        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
+    );
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = env::args().collect();
+    let command = args.get(1).map(String::as_str).unwrap_or("serve");
+    let config_path = args.get(2).map(String::as_str).unwrap_or(DEFAULT_CONFIG);
+
+    if command == "--help" || command == "help" {
+        usage();
+        return ExitCode::SUCCESS;
+    }
+
+    if unsafe { libc_geteuid() } != 0 {
+        eprintln!("multidesktopd must run as root so it can create isolated desktop sessions.");
+        return ExitCode::from(1);
+    }
+
+    let config = match Config::load(Path::new(config_path)) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("configuration error: {error}");
+            return ExitCode::from(2);
+        }
+    };
+
+    if command == "check" {
+        println!("configuration is valid");
+        return ExitCode::SUCCESS;
+    }
+    if command != "serve" {
+        usage();
+        return ExitCode::from(2);
+    }
+
+    let listener = match TcpListener::bind(&config.listen) {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("cannot bind {}: {error}", config.listen);
+            return ExitCode::from(3);
+        }
+    };
+
+    let manager = Arc::new(SessionManager::new(config.clone()));
+    eprintln!("multi-desktop control plane listening on {}", config.listen);
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let manager = Arc::clone(&manager);
+                thread::spawn(move || {
+                    if let Err(error) = handle_client(stream, manager) {
+                        eprintln!("client session ended: {error}");
+                    }
+                });
+            }
+            Err(error) => eprintln!("failed to accept connection: {error}"),
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+// Avoids an external crate in this base project. Linux only.
+unsafe extern "C" {
+    fn geteuid() -> u32;
+}
+
+unsafe fn libc_geteuid() -> u32 {
+    unsafe { geteuid() }
+}

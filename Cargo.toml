@@ -1,0 +1,23 @@
+[package]
+name = "multi-desktop"
+version = "0.1.0"
+edition = "2024"
+description = "A self-hosted, isolated multi-desktop control plane for Linux"
+license = "MIT"
+
+[[bin]]
+name = "multidesktopd"
+path = "src/main.rs"
+
+[[bin]]
+name = "multi-desktop-session"
+path = "src/bin/desktop_session.rs"
+
+[[bin]]
+name = "multidesktopctl"
+path = "src/bin/client.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

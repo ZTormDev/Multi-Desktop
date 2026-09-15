@@ -1,0 +1,10 @@
+# Safe default: local only. Change to the host's LAN IP only after adding a
+# firewall rule for the devices that may connect.
+listen=127.0.0.1:47990
+# Generate a random 32+ character value.
+token=replace-with-a-random-32-character-minimum-token
+# The user created for a desktop named alice becomes mdesk-alice.
+user_prefix=mdesk-
+# Default command for every newly provisioned desktop. Each desktop receives a
+# distinct HOME, runtime, DBus session and Gamescope virtual display.
+desktop_command=gamescope --backend headless --expose-wayland -W 1920 -H 1080 -r 60 -- startxfce4
