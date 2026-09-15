@@ -2,6 +2,7 @@ mod config;
 mod pairing;
 mod protocol;
 mod session;
+mod tls;
 
 use std::{env, net::TcpListener, path::Path, process::ExitCode, sync::Arc, thread};
 
@@ -13,7 +14,7 @@ const DEFAULT_CONFIG: &str = "/etc/multi-desktop/multi-desktop.conf";
 
 fn usage() {
     eprintln!(
-        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n  multidesktopd doctor [config-path]\n  multidesktopd pair <desktop-id> [config-path]\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
+        "Usage:\n  multidesktopd serve [config-path]\n  multidesktopd check [config-path]\n  multidesktopd doctor [config-path]\n  multidesktopd pair <desktop-id> [config-path]\n  multidesktopd tls-check <certificate.pem> <private-key.pem>\n\nThe daemon must run as root. It provisions and supervises isolated desktop sessions."
     );
 }
 
@@ -29,6 +30,23 @@ fn main() -> ExitCode {
     if command == "--help" || command == "help" {
         usage();
         return ExitCode::SUCCESS;
+    }
+
+    if command == "tls-check" {
+        let (Some(certificate), Some(key)) = (args.get(2), args.get(3)) else {
+            usage();
+            return ExitCode::from(2);
+        };
+        return match tls::load_server_config(Path::new(certificate), Path::new(key)) {
+            Ok(_) => {
+                println!("TLS material is valid");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("TLS material error: {error}");
+                ExitCode::from(2)
+            }
+        };
     }
 
     if unsafe { libc_geteuid() } != 0 {

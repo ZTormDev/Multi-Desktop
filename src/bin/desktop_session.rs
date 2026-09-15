@@ -29,8 +29,11 @@ fn main() -> ExitCode {
             }
         }
         let user = env::var("USER").unwrap_or_else(|_| format!("mdesk-{id}"));
+        let capture_wrapped_command = format!(
+            "/usr/local/bin/multi-desktop-capture-agent & /usr/local/bin/multi-desktop-media-agent & exec {command}"
+        );
         let error = Command::new("dbus-run-session")
-            .args(["--", "/bin/sh", "-lc", &command])
+            .args(["--", "/bin/sh", "-lc", &capture_wrapped_command])
             .env_clear()
             .env("HOME", &home)
             .env("USER", &user)

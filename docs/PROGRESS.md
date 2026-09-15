@@ -47,7 +47,7 @@ This document intentionally separates implemented code from the actual user outc
 Goal: reliably start and recover a second virtual desktop while the physical desktop remains unaffected.
 
 - [x] Add structured session state and failure reason reporting (`DETAILS <desktop-id>`).
-- [ ] Add crash/restart policy and cleanup of stale runtime directories.
+- [x] Add crash/restart policy and cleanup of stale runtime directories.
 - [ ] Add integration tests that provision, start, stop and restart a disposable desktop.
 - [ ] Verify that local Hyprland input, sockets and HOME are inaccessible from the remote session.
 - [ ] Document GPU/render-node permissions for AMD, Intel and NVIDIA.
@@ -69,7 +69,7 @@ Acceptance: a paired token cannot access another desktop, replay a pairing code,
 
 Goal: Windows displays the correct virtual desktop at usable latency.
 
-- [ ] Capture only the selected virtual compositor, never the physical desktop.
+- [~] Capture only the selected virtual compositor, never the physical desktop. The session now discovers its private Gamescope PipeWire node; frame consumption is next.
 - [ ] Implement hardware-accelerated H.264/AV1 encode abstraction.
 - [ ] Implement encrypted video transport with loss recovery and bitrate adaptation.
 - [ ] Implement a Windows decoder and renderer.

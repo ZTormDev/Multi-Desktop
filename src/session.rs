@@ -63,8 +63,27 @@ impl SessionManager {
             prerequisite("useradd", "required to provision desktop users"),
             prerequisite("dbus-run-session", "required for a private desktop bus"),
             executable(
+                "multi-desktop-session",
                 Path::new("/usr/local/bin/multi-desktop-session"),
                 "isolated desktop session launcher",
+            ),
+            executable(
+                "multi-desktop-capture-agent",
+                Path::new("/usr/local/bin/multi-desktop-capture-agent"),
+                "PipeWire capture discovery agent",
+            ),
+            prerequisite(
+                "pw-dump",
+                "required to discover the private Gamescope video node",
+            ),
+            executable(
+                "multi-desktop-media-agent",
+                Path::new("/usr/local/bin/multi-desktop-media-agent"),
+                "low-latency H.264 encoder agent",
+            ),
+            prerequisite(
+                "gst-launch-1.0",
+                "required to encode the private PipeWire stream",
             ),
         ];
         for program in ["gamescope", "startxfce4"] {
@@ -158,14 +177,45 @@ impl SessionManager {
         )))
     }
 
+    pub fn capture_status(&self, id: &str) -> io::Result<String> {
+        self.validate_id(id)?;
+        let status =
+            fs::read_to_string(self.runtime_path(id).join("capture-node")).map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "capture agent has not published a node",
+                )
+            })?;
+        Ok(status.lines().collect::<Vec<_>>().join(";"))
+    }
+
+    pub fn media_status(&self, id: &str) -> io::Result<String> {
+        self.validate_id(id)?;
+        Ok(
+            fs::read_to_string(self.runtime_path(id).join("media-status"))?
+                .lines()
+                .collect::<Vec<_>>()
+                .join(";"),
+        )
+    }
+
     pub fn start(&self, id: &str) -> io::Result<String> {
         self.provision(id)?;
-        if matches!(self.status(id).as_deref(), Ok("active")) {
+        let current_state = self.status(id)?;
+        if matches!(current_state.as_str(), "active" | "activating") {
             return Ok("already-running".into());
+        }
+        if current_state == "deactivating" {
+            return Err(io::Error::other(
+                "desktop session is stopping; retry shortly",
+            ));
         }
         let user = self.user_name(id);
         let home = self.home_path(id);
         let runtime = self.runtime_path(id);
+        if runtime.exists() {
+            fs::remove_dir_all(&runtime)?;
+        }
         fs::create_dir_all(&runtime)?;
         self.chown(&runtime, &user)?;
         let status = Command::new("systemd-run")
@@ -180,6 +230,10 @@ impl SessionManager {
                 "--property=ProtectHome=tmpfs",
                 "--property=NoNewPrivileges=yes",
                 "--property=RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
+                "--property=Restart=on-failure",
+                "--property=RestartSec=2s",
+                "--property=StartLimitIntervalSec=60s",
+                "--property=StartLimitBurst=3",
                 "--setenv",
                 &format!("MULTIDESKTOP_DESKTOP_ID={id}"),
                 "--setenv",
@@ -215,6 +269,11 @@ impl SessionManager {
         } else {
             Err(io::Error::other("could not stop desktop session"))
         }
+    }
+
+    pub fn restart(&self, id: &str) -> io::Result<String> {
+        self.stop(id)?;
+        self.start(id).map(|result| format!("restarted;{result}"))
     }
 
     fn validate_id(&self, id: &str) -> io::Result<()> {
@@ -279,7 +338,7 @@ fn format_systemd_details(output: &str) -> String {
 
 fn prerequisite(program: &'static str, detail: &'static str) -> DoctorItem {
     let found = env::var_os("PATH").is_some_and(|paths| {
-        env::split_paths(&paths).any(|directory| executable(&directory.join(program), detail).ok)
+        env::split_paths(&paths).any(|directory| is_executable(&directory.join(program)))
     });
     DoctorItem {
         name: program,
@@ -292,20 +351,10 @@ fn prerequisite(program: &'static str, detail: &'static str) -> DoctorItem {
     }
 }
 
-fn executable(path: &Path, detail: &'static str) -> DoctorItem {
-    let ok = path.is_file()
-        && fs::metadata(path)
-            .map(|metadata| {
-                use std::os::unix::fs::PermissionsExt;
-                metadata.permissions().mode() & 0o111 != 0
-            })
-            .unwrap_or(false);
+fn executable(name: &'static str, path: &Path, detail: &'static str) -> DoctorItem {
+    let ok = is_executable(path);
     DoctorItem {
-        name: if path == Path::new("/usr/local/bin/multi-desktop-session") {
-            "multi-desktop-session"
-        } else {
-            "desktop-command"
-        },
+        name,
         detail: if ok {
             detail.to_owned()
         } else {
@@ -313,6 +362,16 @@ fn executable(path: &Path, detail: &'static str) -> DoctorItem {
         },
         ok,
     }
+}
+
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+        && fs::metadata(path)
+            .map(|metadata| {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode() & 0o111 != 0
+            })
+            .unwrap_or(false)
 }
 
 #[cfg(test)]

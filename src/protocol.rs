@@ -56,7 +56,7 @@ pub fn handle_client(mut stream: TcpStream, manager: Arc<SessionManager>) -> io:
         let mut command = line.split_whitespace();
         let verb = command.next().unwrap_or("");
         let id = command.next();
-        let is_mutation = matches!(verb, "PROVISION" | "START" | "STOP");
+        let is_mutation = matches!(verb, "PROVISION" | "START" | "RESTART" | "STOP");
         let response = match (verb, id, command.next()) {
             ("INFO", None, None) => Ok("version=1;features=desktop-lifecycle".to_owned()),
             ("PING", None, None) => Ok("PONG".to_owned()),
@@ -66,11 +66,23 @@ pub fn handle_client(mut stream: TcpStream, manager: Arc<SessionManager>) -> io:
             ("DETAILS", Some(id), None) if manager.can_manage(&principal, id) => {
                 manager.details(id)
             }
-            ("START", Some(id), None) if manager.can_manage(&principal, id) => manager.start(id),
-            ("STOP", Some(id), None) if manager.can_manage(&principal, id) => manager.stop(id),
-            ("LIST" | "PROVISION" | "STATUS" | "DETAILS" | "START" | "STOP", _, _) => {
-                Ok("ERR forbidden".to_owned())
+            ("CAPTURE", Some(id), None) if manager.can_manage(&principal, id) => {
+                manager.capture_status(id)
             }
+            ("MEDIA", Some(id), None) if manager.can_manage(&principal, id) => {
+                manager.media_status(id)
+            }
+            ("START", Some(id), None) if manager.can_manage(&principal, id) => manager.start(id),
+            ("RESTART", Some(id), None) if manager.can_manage(&principal, id) => {
+                manager.restart(id)
+            }
+            ("STOP", Some(id), None) if manager.can_manage(&principal, id) => manager.stop(id),
+            (
+                "LIST" | "PROVISION" | "STATUS" | "DETAILS" | "CAPTURE" | "MEDIA" | "START"
+                | "RESTART" | "STOP",
+                _,
+                _,
+            ) => Ok("ERR forbidden".to_owned()),
             ("QUIT", None, None) => return Ok(()),
             _ => Ok("ERR unknown-command".to_owned()),
         };

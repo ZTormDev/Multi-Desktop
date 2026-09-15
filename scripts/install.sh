@@ -9,7 +9,7 @@ fi
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 release_dir="$project_dir/target/release"
 
-for binary in multidesktopd multi-desktop-session multidesktopctl; do
+for binary in multidesktopd multi-desktop-session multi-desktop-capture-agent multidesktopctl; do
   if [[ ! -x "$release_dir/$binary" ]]; then
     echo "Missing $release_dir/$binary. Run cargo build --release first." >&2
     exit 1
@@ -18,6 +18,7 @@ done
 
 install -Dm755 "$release_dir/multidesktopd" /usr/local/bin/multidesktopd
 install -Dm755 "$release_dir/multi-desktop-session" /usr/local/bin/multi-desktop-session
+install -Dm755 "$release_dir/multi-desktop-capture-agent" /usr/local/bin/multi-desktop-capture-agent
 install -Dm755 "$release_dir/multidesktopctl" /usr/local/bin/multidesktopctl
 install -Dm644 "$project_dir/packaging/multidesktopd.service" /etc/systemd/system/multidesktopd.service
 

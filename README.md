@@ -52,6 +52,8 @@ STATUS <desktop-id>
 START <desktop-id>
 STOP <desktop-id>
 DETAILS <desktop-id>
+RESTART <desktop-id>
+CAPTURE <desktop-id>
 ```
 
 The development CLI is:
@@ -65,6 +67,10 @@ Passing the token directly as an argument remains supported for simple tests, bu
 Lifecycle operations and failed authentication attempts are recorded in the daemon journal. Inspect them with `journalctl -u multidesktopd.service` after the service is enabled.
 
 `DETAILS <desktop-id>` returns the session's active state, sub-state, result and main-process exit status in one line. `STOP` removes only that desktop's temporary runtime directory; its provisioned HOME is kept.
+
+Virtual desktop units retry a crash up to three times per minute. `RESTART <desktop-id>` performs a controlled stop, cleans the temporary runtime and starts a fresh session.
+
+`CAPTURE <desktop-id>` reports whether the session's private Gamescope PipeWire video node is ready. This is the capture source for the upcoming encoder; it does not capture the physical desktop.
 
 ## Pair a remote device
 

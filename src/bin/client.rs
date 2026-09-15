@@ -54,7 +54,9 @@ fn main() -> ExitCode {
     let id = args.next();
     let request = match action.as_str() {
         "INFO" | "LIST" | "PING" if id.is_none() => action,
-        "PROVISION" | "STATUS" | "DETAILS" | "START" | "STOP" if id.is_some() => {
+        "PROVISION" | "STATUS" | "DETAILS" | "CAPTURE" | "START" | "RESTART" | "STOP"
+            if id.is_some() =>
+        {
             format!("{action} {}", id.unwrap())
         }
         _ => return usage(),
@@ -73,7 +75,7 @@ fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "Usage:\n  multidesktopctl <host:port> <token|--token-stdin> <INFO|LIST|PING|PROVISION|STATUS|DETAILS|START|STOP> [desktop-id]\n  multidesktopctl pair <host:port> <pairing-code>"
+        "Usage:\n  multidesktopctl <host:port> <token|--token-stdin> <INFO|LIST|PING|PROVISION|STATUS|DETAILS|CAPTURE|START|RESTART|STOP> [desktop-id]\n  multidesktopctl pair <host:port> <pairing-code>"
     );
     ExitCode::from(2)
 }
