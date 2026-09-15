@@ -79,4 +79,4 @@ multidesktopctl pair <host:port> <pairing-code>
 
 That provisions the isolated Linux user and returns a device token. Save the token in the future client; it can only start, stop or view the paired desktop, never list or control anyone else's desktop. The current bootstrap channel is still LAN-development-only until TLS is added.
 
-See [the architecture document](docs/ARCHITECTURE.md) for the boundary model. `scripts/uninstall.sh` removes installed program files but deliberately preserves configuration and all provisioned desktop data.
+See [the architecture document](docs/ARCHITECTURE.md), [the real progress plan](docs/PROGRESS.md) and [the contributor/agent guide](AGENTS.md). `scripts/uninstall.sh` removes installed program files but deliberately preserves configuration and all provisioned desktop data.
